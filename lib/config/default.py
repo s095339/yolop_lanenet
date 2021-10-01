@@ -105,7 +105,7 @@ _C.TRAIN.SEG_ONLY = False           # Only train two segmentation branchs
 _C.TRAIN.DET_ONLY = False           # Only train detection branch
 _C.TRAIN.ENC_SEG_ONLY = False       # Only train encoder and two segmentation branchs
 _C.TRAIN.ENC_DET_ONLY = False       # Only train encoder and detection branch
-
+_C.TRAIN.LANENET_ONLY = True        # Only train encoder and lanenet
 # Single task 
 _C.TRAIN.DRIVABLE_ONLY = False      # Only train da_segmentation task
 _C.TRAIN.LANE_ONLY = False          # Only train ll_segmentation task

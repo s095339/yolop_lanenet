@@ -2,8 +2,15 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image, ImageDraw
 
+from lanenet.loss import DiscriminativeLoss
+from lanenet.backbone.ENet import ENet_Encoder, ENet_Decoder
+
+
+from lanenet.loss import DiscriminativeLoss
+from lanenet.backbone.ENet import ENet_Encoder, ENet_Decoder
 
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
@@ -11,7 +18,43 @@ def autopad(k, p=None):  # kernel, padding
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
 
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+
+class LaneNet(nn.Module):
+    def __init__(self, in_ch = 3, arch="ENet"):
+        super(LaneNet, self).__init__()
+        # no of instances for segmentation
+        self.no_of_instances = 3  # if you want to output RGB instance map, it should be 3.
+        print("Use {} as backbone".format(arch))
+        self._arch = arch
+        if self._arch == 'ENet':
+            #self._encoder = ENet_Encoder(in_ch)
+            #self._encoder.to(DEVICE)
+
+            self._decoder_binary = ENet_Decoder(2)
+            self._decoder_instance = ENet_Decoder(self.no_of_instances)
+            self._decoder_binary.to(DEVICE)
+            self._decoder_instance.to(DEVICE)
+        self.relu = nn.ReLU().to(DEVICE)
+        self.sigmoid = nn.Sigmoid().to(DEVICE)
+
+    def forward(self, input_tensor):
+        if self._arch == 'ENet':
+            #c = self._encoder(input_tensor)
+            c = input_tensor
+            binary = self._decoder_binary(c)
+            instance = self._decoder_instance(c)
+
+        binary_seg_ret = torch.argmax(F.softmax(binary, dim=1), dim=1, keepdim=True)
+
+        pix_embedding = self.sigmoid(instance)
+
+        return {
+            'instance_seg_logits': pix_embedding,
+            'binary_seg_pred': binary_seg_ret,
+            'binary_seg_logits': binary
+        }
 class DepthSeperabelConv2d(nn.Module):
     """
     DepthSeperable Convolution 2d with residual connection

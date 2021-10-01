@@ -139,6 +139,8 @@ def main():
     Da_Seg_Head_para_idx = [str(i) for i in range(25, 34)]
     Ll_Seg_Head_para_idx = [str(i) for i in range(34,43)]
 
+    Lanenet_para_idx = [str(i) for i in range(43,44)]
+
     lf = lambda x: ((1 + math.cos(x * math.pi / cfg.TRAIN.END_EPOCH)) / 2) * \
                    (1 - cfg.TRAIN.LRF) + cfg.TRAIN.LRF  # cosine
     lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
@@ -191,7 +193,7 @@ def main():
             logger.info('freeze encoder and Det head...')
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
-                if k.split(".")[1] in Encoder_para_idx + Det_Head_para_idx:
+                if k.split(".")[1] in Encoder_para_idx + Det_Head_para_idx + Lanenet_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
 
@@ -200,7 +202,7 @@ def main():
             # print(model.named_parameters)
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
-                if k.split(".")[1] in Encoder_para_idx + Da_Seg_Head_para_idx + Ll_Seg_Head_para_idx:
+                if k.split(".")[1] in Encoder_para_idx + Da_Seg_Head_para_idx + Ll_Seg_Head_para_idx  + Lanenet_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
 
@@ -208,7 +210,7 @@ def main():
             logger.info('freeze Det head...')
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers 
-                if k.split(".")[1] in Det_Head_para_idx:
+                if k.split(".")[1] in Det_Head_para_idx + Lanenet_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
 
@@ -216,7 +218,7 @@ def main():
             logger.info('freeze two Seg heads...')
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
-                if k.split(".")[1] in Da_Seg_Head_para_idx + Ll_Seg_Head_para_idx:
+                if k.split(".")[1] in Da_Seg_Head_para_idx + Ll_Seg_Head_para_idx + Lanenet_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
 
@@ -226,7 +228,7 @@ def main():
             # print(model.named_parameters)
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
-                if k.split(".")[1] in Encoder_para_idx + Da_Seg_Head_para_idx + Det_Head_para_idx:
+                if k.split(".")[1] in Encoder_para_idx + Da_Seg_Head_para_idx + Det_Head_para_idx + Lanenet_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
 
@@ -235,7 +237,16 @@ def main():
             # print(model.named_parameters)
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
-                if k.split(".")[1] in Encoder_para_idx + Ll_Seg_Head_para_idx + Det_Head_para_idx:
+                if k.split(".")[1] in Encoder_para_idx + Ll_Seg_Head_para_idx + Det_Head_para_idx + Lanenet_para_idx:
+                    print('freezing %s' % k)
+                    v.requires_grad = False
+        #usercode
+        if cfg.TRAIN.DRIVABLE_ONLY:
+            logger.info('freeze encoder and Det head and Ll_Seg heads...')
+            # print(model.named_parameters)
+            for k, v in model.named_parameters():
+                v.requires_grad = True  # train all layers
+                if k.split(".")[1] in Encoder_para_idx + Ll_Seg_Head_para_idx + Det_Head_para_idx + Da_Seg_Head_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
         

@@ -52,8 +52,8 @@ def detect(cfg,opt):
     # Load model
     model = get_net(cfg)
     checkpoint = torch.load(opt.weights, map_location= device)
-    model.load_state_dict(checkpoint['state_dict'])
-    model = model.to(device)
+    model.load_state_dict(checkpoint['state_dict'],strict = False)
+    model = model.to("cuda")
     if half:
         model.half()  # to FP16
 
@@ -85,12 +85,14 @@ def detect(cfg,opt):
     
     for i, (path, img, img_det, vid_cap,shapes) in tqdm(enumerate(dataset),total = len(dataset)):
         img = transform(img).to(device)
+        #print("device-",device)
+        #print("-------------------")
         img = img.half() if half else img.float()  # uint8 to fp16/32
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
         # Inference
         t1 = time_synchronized()
-        det_out, da_seg_out,ll_seg_out= model(img)
+        det_out, da_seg_out,ll_seg_out,lanenet_out= model(img)
         t2 = time_synchronized()
         if i == 0:
             print(det_out)
@@ -166,7 +168,7 @@ if __name__ == '__main__':
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')
-    parser.add_argument('--device', default='cpu', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='gpu', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--save-dir', type=str, default='inference/output', help='directory to save results')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
