@@ -51,8 +51,10 @@ def detect(cfg,opt):
 
     # Load model
     model = get_net(cfg)
+    checkpoint_lanenet = torch.load("./log/best_model.pth", map_location= device)
     checkpoint = torch.load(opt.weights, map_location= device)
-    model.load_state_dict(checkpoint['state_dict'],strict = False)
+    model.load_state_dict(checkpoint_lanenet,strict = False)
+    #model.load_state_dict(checkpoint['state_dict'],strict = False)
     model = model.to("cuda")
     if half:
         model.half()  # to FP16
@@ -94,6 +96,27 @@ def detect(cfg,opt):
         t1 = time_synchronized()
         det_out, da_seg_out,ll_seg_out,lanenet_out= model(img)
         t2 = time_synchronized()
+        #lanenet_output
+        image_from_lanenet = np.array(lanenet_out['binary_seg_pred'].cpu().numpy()[0,0,:,:],dtype = np.uint8)
+        #print(image_from_lanenet)
+        image_from_lanenet[image_from_lanenet>0] = 255
+        instance_pred = torch.squeeze(lanenet_out['instance_seg_logits'].detach().to('cpu')).numpy().astype(np.uint8) * 255
+        instance_pred = instance_pred.transpose((1, 2, 0))
+        print("instance_",type(instance_pred),"instance.shape",instance_pred.shape )
+
+        
+        save_path = str(opt.save_dir +'/'+"binary_"+ Path(path).name )
+
+        cv2.imwrite(save_path ,image_from_lanenet)
+        save_path = str(opt.save_dir +'/'+"instance_"+ Path(path).name )
+        cv2.imwrite(save_path ,instance_pred)
+        #cv2.imshow("instance",instance_pred.transpose((1, 2, 0)))
+        
+        
+        #cv2.imwrite(os.path.join('test_output', 'instance_output.jpg'), instance_pred.transpose((1, 2, 0)))
+        #cv2.imwrite(os.path.join('test_output', 'binary_output.jpg'), binary_pred)
+
+
         if i == 0:
             print(det_out)
         inf_out, _ = det_out

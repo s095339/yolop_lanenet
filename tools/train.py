@@ -248,7 +248,7 @@ def main():
                     print('freezing %s' % k)
                     v.requires_grad = False
         #usercode
-        if cfg.TRAIN.DRIVABLE_ONLY:
+        if cfg.TRAIN.LANENET_ONLY:
             logger.info('freeze encoder and Det head and Ll_Seg heads...')
             # print(model.named_parameters)
             for k, v in model.named_parameters():

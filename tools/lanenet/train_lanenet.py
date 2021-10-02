@@ -6,7 +6,7 @@ import numpy as np
 import time
 import copy
 from lanenet.loss import DiscriminativeLoss, FocalLoss
-
+import tqdm
 def compute_loss(net_output, binary_label, instance_label, loss_type = 'FocalLoss'):
     k_binary = 10    #1.7
     k_instance = 0.3
@@ -42,7 +42,10 @@ def train_model(model, optimizer, scheduler, dataloaders, dataset_sizes, device,
     best_loss = float("inf")
 
     best_model_wts = copy.deepcopy(model.state_dict())
-
+    total_loss_per_batch = []
+    binary_loss_per_batch = []
+    instance_loss_per_batch = []
+    i = 0
     for epoch in range(num_epochs):
         training_log['epoch'].append(epoch)
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -60,12 +63,13 @@ def train_model(model, optimizer, scheduler, dataloaders, dataset_sizes, device,
             running_loss_i = 0.0
 
             # Iterate over data.
+            
             for inputs, binarys, instances in dataloaders[phase]:
                 #print("--------input-------\n",inputs.shape , binarys.shape , instances.shape)
                 inputs = inputs.type(torch.FloatTensor).to(device)
                 binarys = binarys.type(torch.LongTensor).to(device)
                 instances = instances.type(torch.FloatTensor).to(device)
-
+                i += 1
                 # zero the parameter gradients
                 optimizer.zero_grad()
 
@@ -84,7 +88,9 @@ def train_model(model, optimizer, scheduler, dataloaders, dataset_sizes, device,
                 running_loss += loss[0].item() * inputs.size(0)
                 running_loss_b += loss[1].item() * inputs.size(0)
                 running_loss_i += loss[2].item() * inputs.size(0)
-
+                total_loss_per_batch.append((i,loss[0]))
+                binary_loss_per_batch.append((i,loss[0]))
+                instance_loss_per_batch.append((i,loss[0]))
             if phase == 'train':
                 if scheduler != None:
                     scheduler.step()
