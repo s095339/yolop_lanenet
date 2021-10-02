@@ -33,42 +33,49 @@ from lib.utils.utils import get_optimizer
 from lib.utils.utils import save_checkpoint
 from lib.utils.utils import create_logger, select_device
 from lib.utils import run_anchor
-
+#Lanenet
+from tools.lanenet.LaneNet import LaneNet
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Multitask network')
-    # general
-    # parser.add_argument('--cfg',
-    #                     help='experiment configure file name',
-    #                     required=True,
-    #                     type=str)
-
-    # philly
     parser.add_argument('--modelDir',
-                        help='model directory',
-                        type=str,
-                        default='')
+                            help='model directory',
+                            type=str,
+                            default='')
     parser.add_argument('--logDir',
-                        help='log directory',
-                        type=str,
-                        default='runs/')
+                            help='log directory',
+                            type=str,
+                            default='runs/')
     parser.add_argument('--dataDir',
-                        help='data directory',
-                        type=str,
-                        default='')
+                            help='data directory',
+                            type=str,
+                            default='')
     parser.add_argument('--prevModelDir',
-                        help='prev Model directory',
-                        type=str,
-                        default='')
-
+                            help='prev Model directory',
+                            type=str,
+                            default='')
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
     parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
-    parser.add_argument('--iou-thres', type=float, default=0.6, help='IOU threshold for NMS')
+    parser.add_argument('--iou-thres', type=float, default=0.6, help='IOU threshold for NMS')    
+    if  cfg.TRAIN.LANENET_ONLY:#train_lanenet
+        parser.add_argument("--dataset", help="Dataset path", default = './tusimple')
+        parser.add_argument("--model_type", help="Model type", default='ENet')
+        parser.add_argument("--loss_type", help="Loss type", default='FocalLoss')
+        parser.add_argument("--save", required=False, help="Directory to save model", default="./log")
+        parser.add_argument("--epochs", required=False, type=int, help="Training epochs", default=25)
+        parser.add_argument("--width", required=False, type=int, help="Resize width", default=640)
+        parser.add_argument("--height", required=False, type=int, help="Resize height", default=640)
+        parser.add_argument("--bs", required=False, type=int, help="Batch size", default=1)
+        parser.add_argument("--val", required=False, type=bool, help="Use validation", default=False)
+        parser.add_argument("--lr", required=False, type=float, help="Learning rate", default=0.0001)
+        parser.add_argument("--pretrained", required=False, default=None, help="pretrained model path")
+        parser.add_argument("--image", default="./output", help="output image folder")
+        #parser.add_argument("--net", help="backbone network")
+        parser.add_argument("--json", help="post processing json")
     args = parser.parse_args()
 
     return args
-
 
 def main():
     # set all the configurations
@@ -156,8 +163,8 @@ def main():
             begin_epoch = checkpoint['epoch']
             # best_perf = checkpoint['perf']
             last_epoch = checkpoint['epoch']
-            model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
+            model.load_state_dict(checkpoint['state_dict'],strict = False)
+            #optimizer.load_state_dict(checkpoint['optimizer'])
             logger.info("=> loaded checkpoint '{}' (epoch {})".format(
                 cfg.MODEL.PRETRAINED, checkpoint['epoch']))
             #cfg.NEED_AUTOANCHOR = False     #disable autoanchor
@@ -265,52 +272,99 @@ def main():
 
     print("begin to load data")
     # Data loading
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )
+    if not cfg.TRAIN.LANENET_ONLY:
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )
 
-    train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
-        cfg=cfg,
-        is_train=True,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])
-    )
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
-
-    train_loader = DataLoaderX(
-        train_dataset,
-        batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
-        shuffle=(cfg.TRAIN.SHUFFLE & rank == -1),
-        num_workers=cfg.WORKERS,
-        sampler=train_sampler,
-        pin_memory=cfg.PIN_MEMORY,
-        collate_fn=dataset.AutoDriveDataset.collate_fn
-    )
-    num_batch = len(train_loader)
-
-    if rank in [-1, 0]:
-        valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
             cfg=cfg,
-            is_train=False,
+            is_train=True,
             inputsize=cfg.MODEL.IMAGE_SIZE,
             transform=transforms.Compose([
                 transforms.ToTensor(),
                 normalize,
             ])
         )
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
 
-        valid_loader = DataLoaderX(
-            valid_dataset,
-            batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
-            shuffle=False,
+        train_loader = DataLoaderX(
+            train_dataset,
+            batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+            shuffle=(cfg.TRAIN.SHUFFLE & rank == -1),
             num_workers=cfg.WORKERS,
+            sampler=train_sampler,
             pin_memory=cfg.PIN_MEMORY,
             collate_fn=dataset.AutoDriveDataset.collate_fn
         )
-        print('load data finished')
+        num_batch = len(train_loader)
+
+        if rank in [-1, 0]:
+            valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+                cfg=cfg,
+                is_train=False,
+                inputsize=cfg.MODEL.IMAGE_SIZE,
+                transform=transforms.Compose([
+                    transforms.ToTensor(),
+                    normalize,
+                ])
+            )
+
+            valid_loader = DataLoaderX(
+                valid_dataset,
+                batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+                shuffle=False,
+                num_workers=cfg.WORKERS,
+                pin_memory=cfg.PIN_MEMORY,
+                collate_fn=dataset.AutoDriveDataset.collate_fn
+            )
+            print('load data finished')
+    else:
+        from torch.utils.data import DataLoader
+        import pandas as pd
+        from dataloader_lanenet.transformers import Rescale
+        from dataloader_lanenet.data_loaders import TusimpleSet
+        save_path = args.save    
+        if not os.path.isdir(save_path):
+            os.makedirs(save_path)
+
+        train_dataset_file = os.path.join(args.dataset, 'train.txt')
+        val_dataset_file = os.path.join(args.dataset, 'val.txt')
+
+        resize_height = args.height
+        resize_width = args.width
+
+        data_transforms = {
+            'train': transforms.Compose([
+                transforms.Resize((resize_height, resize_width)),
+                transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+            'val': transforms.Compose([
+                transforms.Resize((resize_height, resize_width)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+        }
+
+        target_transforms = transforms.Compose([
+            Rescale((resize_width, resize_height)),
+        ])
+
+        train_dataset = TusimpleSet(train_dataset_file, transform=data_transforms['train'], target_transform=target_transforms)
+        train_loader = DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
+
+        val_dataset = TusimpleSet(val_dataset_file, transform=data_transforms['val'], target_transform=target_transforms)
+        val_loader = DataLoader(val_dataset, batch_size=args.bs, shuffle=True)
+
+        dataloaders = {
+            'train' : train_loader,
+            'val' : val_loader
+        }
+        dataset_sizes = {'train': len(train_loader.dataset), 'val' : len(val_loader.dataset)}
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        print(f"{args.epochs} epochs {len(train_dataset)} training samples\n")
     
     if rank in [-1, 0]:
         if cfg.NEED_AUTOANCHOR:
@@ -323,69 +377,89 @@ def main():
             logger.info(str(det.anchors))
 
     # training
-    num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 1000)
-    scaler = amp.GradScaler(enabled=device.type != 'cpu')
-    print('=> start training...')
-    for epoch in range(begin_epoch+1, cfg.TRAIN.END_EPOCH+1):
-        if rank != -1:
-            train_loader.sampler.set_epoch(epoch)
-        # train for one epoch
-        train(cfg, train_loader, model, criterion, optimizer, scaler,
-              epoch, num_batch, num_warmup, writer_dict, logger, device, rank)
+    if not cfg.TRAIN.LANENET_ONLY:
+        num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 1000)
+        scaler = amp.GradScaler(enabled=device.type != 'cpu')
+        print('=> start training...')
+        for epoch in range(begin_epoch+1, cfg.TRAIN.END_EPOCH+1):
+            if rank != -1:
+                train_loader.sampler.set_epoch(epoch)
+            # train for one epoch
+            train(cfg, train_loader, model, criterion, optimizer, scaler,
+                epoch, num_batch, num_warmup, writer_dict, logger, device, rank)
+            
+            lr_scheduler.step()
+
+            # evaluate on validation set
+            if (epoch % cfg.TRAIN.VAL_FREQ == 0 or epoch == cfg.TRAIN.END_EPOCH) and rank in [-1, 0]:
+                # print('validate')
+                da_segment_results,ll_segment_results,detect_results, total_loss,maps, times = validate(
+                    epoch,cfg, valid_loader, valid_dataset, model, criterion,
+                    final_output_dir, tb_log_dir, writer_dict,
+                    logger, device, rank
+                )
+                fi = fitness(np.array(detect_results).reshape(1, -1))  #目标检测评价指标
+
+                msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \
+                        'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
+                        'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
+                        'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
+                        'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
+                            epoch,  loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
+                            ll_seg_acc=ll_segment_results[0],ll_seg_iou=ll_segment_results[1],ll_seg_miou=ll_segment_results[2],
+                            p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
+                            t_inf=times[0], t_nms=times[1])
+                logger.info(msg)
+
+                # if perf_indicator >= best_perf:
+                #     best_perf = perf_indicator
+                #     best_model = True
+                # else:
+                #     best_model = False
+
+            # save checkpoint model and best model
+            if rank in [-1, 0]:
+                savepath = os.path.join(final_output_dir, f'epoch-{epoch}.pth')
+                logger.info('=> saving checkpoint to {}'.format(savepath))
+                save_checkpoint(
+                    epoch=epoch,
+                    name=cfg.MODEL.NAME,
+                    model=model,
+                    # 'best_state_dict': model.module.state_dict(),
+                    # 'perf': perf_indicator,
+                    optimizer=optimizer,
+                    output_dir=final_output_dir,
+                    filename=f'epoch-{epoch}.pth'
+                )
+                save_checkpoint(
+                    epoch=epoch,
+                    name=cfg.MODEL.NAME,
+                    model=model,
+                    # 'best_state_dict': model.module.state_dict(),
+                    # 'perf': perf_indicator,
+                    optimizer=optimizer,
+                    output_dir=os.path.join(cfg.LOG_DIR, cfg.DATASET.DATASET),
+                    filename='checkpoint.pth'
+                )
+    else:
+        from lanenet.train_lanenet import train_model
+        model, log = train_model(
+        model, optimizer, scheduler=None, dataloaders=dataloaders, 
+        dataset_sizes=dataset_sizes, device=device, loss_type=args.loss_type, 
+        num_epochs=args.epochs
+        )
+        df=pd.DataFrame({'epoch':[],'training_loss':[],'val_loss':[]})
+        df['epoch'] = log['epoch']
+        df['training_loss'] = log['training_loss']
+        df['val_loss'] = log['val_loss']
+
+        train_log_save_filename = os.path.join(save_path, 'training_log.csv')
+        df.to_csv(train_log_save_filename, columns=['epoch','training_loss','val_loss'], header=True,index=False,encoding='utf-8')
+        print("training log is saved: {}".format(train_log_save_filename))
         
-        lr_scheduler.step()
-
-        # evaluate on validation set
-        if (epoch % cfg.TRAIN.VAL_FREQ == 0 or epoch == cfg.TRAIN.END_EPOCH) and rank in [-1, 0]:
-            # print('validate')
-            da_segment_results,ll_segment_results,detect_results, total_loss,maps, times = validate(
-                epoch,cfg, valid_loader, valid_dataset, model, criterion,
-                final_output_dir, tb_log_dir, writer_dict,
-                logger, device, rank
-            )
-            fi = fitness(np.array(detect_results).reshape(1, -1))  #目标检测评价指标
-
-            msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \
-                      'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
-                      'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
-                      'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
-                      'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
-                          epoch,  loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
-                          ll_seg_acc=ll_segment_results[0],ll_seg_iou=ll_segment_results[1],ll_seg_miou=ll_segment_results[2],
-                          p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
-                          t_inf=times[0], t_nms=times[1])
-            logger.info(msg)
-
-            # if perf_indicator >= best_perf:
-            #     best_perf = perf_indicator
-            #     best_model = True
-            # else:
-            #     best_model = False
-
-        # save checkpoint model and best model
-        if rank in [-1, 0]:
-            savepath = os.path.join(final_output_dir, f'epoch-{epoch}.pth')
-            logger.info('=> saving checkpoint to {}'.format(savepath))
-            save_checkpoint(
-                epoch=epoch,
-                name=cfg.MODEL.NAME,
-                model=model,
-                # 'best_state_dict': model.module.state_dict(),
-                # 'perf': perf_indicator,
-                optimizer=optimizer,
-                output_dir=final_output_dir,
-                filename=f'epoch-{epoch}.pth'
-            )
-            save_checkpoint(
-                epoch=epoch,
-                name=cfg.MODEL.NAME,
-                model=model,
-                # 'best_state_dict': model.module.state_dict(),
-                # 'perf': perf_indicator,
-                optimizer=optimizer,
-                output_dir=os.path.join(cfg.LOG_DIR, cfg.DATASET.DATASET),
-                filename='checkpoint.pth'
-            )
+        model_save_filename = os.path.join(save_path, 'best_model.pth')
+        torch.save(model.state_dict(), model_save_filename)
+        print("model is saved: {}".format(model_save_filename))
 
     # save final model
     if rank in [-1, 0]:

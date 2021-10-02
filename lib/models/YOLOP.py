@@ -69,7 +69,8 @@ YOLOP = [
 [ -1, Upsample, [None, 2, 'nearest']],  #41
 [ -1, Conv, [8, 2, 3, 1]], #42 Lane line segmentation head
 
-[ 16, LaneNet, [1] ] #43 lanenet out
+
+[ 15, LaneNet, [1] ] #43 lanenet out
 ]
 
 
@@ -138,9 +139,10 @@ class MCnet(nn.Module):
             if i == self.detector_index:
                 det_out = x
             if i == self.lanenet_out_idx:
-                out.append(x)
+                lanenet_out = x
             cache.append(x if block.index in self.save else None)
         out.insert(0,det_out)
+        out.append(lanenet_out)
         return out
             
     
