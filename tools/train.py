@@ -59,14 +59,14 @@ def parse_args():
     parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.6, help='IOU threshold for NMS')    
     if  cfg.TRAIN.LANENET_ONLY:#train_lanenet
-        parser.add_argument("--dataset", help="Dataset path", default = './tusimple')
+        parser.add_argument("--dataset", help="Dataset path", default = './training_data_temp')
         parser.add_argument("--model_type", help="Model type", default='ENet')
         parser.add_argument("--loss_type", help="Loss type", default='FocalLoss')
         parser.add_argument("--save", required=False, help="Directory to save model", default="./log")
-        parser.add_argument("--epochs", required=False, type=int, help="Training epochs", default=25)
+        parser.add_argument("--epochs", required=False, type=int, help="Training epochs", default=30)
         parser.add_argument("--width", required=False, type=int, help="Resize width", default=640)
         parser.add_argument("--height", required=False, type=int, help="Resize height", default=640)
-        parser.add_argument("--bs", required=False, type=int, help="Batch size", default=1)
+        parser.add_argument("--bs", required=False, type=int, help="Batch size", default=2)
         parser.add_argument("--val", required=False, type=bool, help="Use validation", default=False)
         parser.add_argument("--lr", required=False, type=float, help="Learning rate", default=0.0001)
         parser.add_argument("--pretrained", required=False, default=None, help="pretrained model path")
@@ -160,13 +160,13 @@ def main():
         if os.path.exists(cfg.MODEL.PRETRAINED):
             logger.info("=> loading model '{}'".format(cfg.MODEL.PRETRAINED))
             checkpoint = torch.load(cfg.MODEL.PRETRAINED)
-            begin_epoch = checkpoint['epoch']
+            #begin_epoch = checkpoint['epoch']
             # best_perf = checkpoint['perf']
-            last_epoch = checkpoint['epoch']
-            model.load_state_dict(checkpoint['state_dict'],strict = False)
+            #last_epoch = checkpoint['epoch']
+            model.load_state_dict(checkpoint)
             #optimizer.load_state_dict(checkpoint['optimizer'])
-            logger.info("=> loaded checkpoint '{}' (epoch {})".format(
-                cfg.MODEL.PRETRAINED, checkpoint['epoch']))
+            #logger.info("=> loaded checkpoint '{}' (epoch {})".format(
+            #   cfg.MODEL.PRETRAINED, checkpoint['epoch']))
             #cfg.NEED_AUTOANCHOR = False     #disable autoanchor
         
         if os.path.exists(cfg.MODEL.PRETRAINED_DET):
@@ -239,12 +239,12 @@ def main():
                     print('freezing %s' % k)
                     v.requires_grad = False
 
-        if cfg.TRAIN.DRIVABLE_ONLY:
+        if cfg.TRAIN.LANENET_ONLY:
             logger.info('freeze encoder and Det head and Ll_Seg heads...')
             # print(model.named_parameters)
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
-                if k.split(".")[1] in Encoder_para_idx + Ll_Seg_Head_para_idx + Det_Head_para_idx + Lanenet_para_idx:
+                if k.split(".")[1] in  Ll_Seg_Head_para_idx + Det_Head_para_idx + Lanenet_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
         #usercode
@@ -253,7 +253,7 @@ def main():
             # print(model.named_parameters)
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
-                if k.split(".")[1] in Encoder_para_idx + Ll_Seg_Head_para_idx + Det_Head_para_idx + Da_Seg_Head_para_idx:
+                if k.split(".")[1] in  Ll_Seg_Head_para_idx + Det_Head_para_idx + Da_Seg_Head_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
         

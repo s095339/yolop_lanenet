@@ -34,12 +34,11 @@ class LaneNet(nn.Module):
         self.sigmoid = nn.Sigmoid().to(DEVICE)
 
     def forward(self, input_tensor):
-        c = input_tensor
+        #c = input_tensor
         if self._arch == 'ENet':
-            #c = input_tensor
+            c = input_tensor
             binary = self._decoder_binary(c)
             instance = self._decoder_instance(c)
-
         binary_seg_ret = torch.argmax(F.softmax(binary, dim=1), dim=1, keepdim=True)
 
         pix_embedding = self.sigmoid(instance)

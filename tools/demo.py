@@ -28,6 +28,8 @@ from lib.utils import plot_one_box,show_seg_result
 from lib.core.function import AverageMeter
 from lib.core.postprocess import morphological_process
 from tqdm import tqdm
+
+from lanenet.lanenet_cluster import LaneNetCluster 
 normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
     )
@@ -37,6 +39,18 @@ transform=transforms.Compose([
             normalize,
         ])
 
+def minmax_scale(input_arr):
+    """
+
+    :param input_arr:
+    :return:
+    """
+    min_val = np.min(input_arr)
+    max_val = np.max(input_arr)
+
+    output_arr = (input_arr - min_val) * 255.0 / (max_val - min_val)
+
+    return output_arr
 
 def detect(cfg,opt):
 
@@ -86,6 +100,7 @@ def detect(cfg,opt):
     nms_time = AverageMeter()
     
     for i, (path, img, img_det, vid_cap,shapes) in tqdm(enumerate(dataset),total = len(dataset)):
+        gt_img  = img
         img = transform(img).to(device)
         #print("device-",device)
         #print("-------------------")
@@ -96,21 +111,40 @@ def detect(cfg,opt):
         t1 = time_synchronized()
         det_out, da_seg_out,ll_seg_out,lanenet_out= model(img)
         t2 = time_synchronized()
-        #lanenet_output
-        image_from_lanenet = np.array(lanenet_out['binary_seg_pred'].cpu().numpy()[0,0,:,:],dtype = np.uint8)
-        #print(image_from_lanenet)
-        image_from_lanenet[image_from_lanenet>0] = 255
+        #lanenet_output_cluster
+        binary_pred = lanenet_out['binary_seg_pred']
+        binary_seg_image = np.array(lanenet_out['binary_seg_pred'].cpu().numpy()[0,0,:,:],dtype = np.uint8)
+        #print(binary_seg_image)
+        binary_seg_image[binary_seg_image>0] = 255
+        instance_seg_image = lanenet_out['instance_seg_logits']
         instance_pred = torch.squeeze(lanenet_out['instance_seg_logits'].detach().to('cpu')).numpy().astype(np.uint8) * 255
+        print("instance_seg_image",type(instance_seg_image),"instance.shape",instance_seg_image.shape )
+        instance_seg = instance_pred.transpose((2, 1, 0))
         instance_pred = instance_pred.transpose((1, 2, 0))
-        print("instance_",type(instance_pred),"instance.shape",instance_pred.shape )
+        print("instance_transpose",type(instance_pred),"instance.shape",instance_pred.shape )
 
-        
-        save_path = str(opt.save_dir +'/'+"binary_"+ Path(path).name )
+        #cluster
+        cluster = LaneNetCluster()
+        mask = np.random.randn(binary_pred[0][0,:,:].shape[0], binary_pred[0][0,:,:].shape[1]) > 0.5
+        bi = binary_pred[0][0,:,:].cpu() * mask
+        print("聚類囉")
+        mask_image, lane_coordinate, cluster_index, labels = cluster.get_lane_mask(binary_seg_ret=bi,
+                                           instance_seg_ret=instance_pred, gt_image=gt_img)
+        print("embedding")
+        for j in range(3):
+            instance_pred[:, :, j] = minmax_scale(instance_pred[:, :, j])
+        embedding_image = np.array(instance_seg, np.uint8)
 
-        cv2.imwrite(save_path ,image_from_lanenet)
-        save_path = str(opt.save_dir +'/'+"instance_"+ Path(path).name )
+
+        #save_path = str("./inference/lanenet_output/" +str(i)+"_gt_"+ Path(path).name )
+        #cv2.imwrite(save_path ,gt_img)
+        save_path = str("./inference/embedding/" +str(i)+"_binary_"+ Path(path).name )
+        cv2.imwrite(save_path ,binary_seg_image)
+        save_path = str("./inference/embedding/" +str(i)+"_instance_"+ Path(path).name )
         cv2.imwrite(save_path ,instance_pred)
-        #cv2.imshow("instance",instance_pred.transpose((1, 2, 0)))
+        save_path = str("./inference/embedding/" +str(i)+"_embedding_"+ Path(path).name )
+        cv2.imwrite(save_path,mask_image)
+        
         
         
         #cv2.imwrite(os.path.join('test_output', 'instance_output.jpg'), instance_pred.transpose((1, 2, 0)))
@@ -187,7 +221,7 @@ def detect(cfg,opt):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/End-to-end.pth', help='model.pth path(s)')
-    parser.add_argument('--source', type=str, default='inference/images', help='source')  # file/folder   ex:inference/images
+    parser.add_argument('--source', type=str, default='C:/Users/s0953/Desktop/RGB_vx2_1015', help='source')  # file/folder   ex:inference/images
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')

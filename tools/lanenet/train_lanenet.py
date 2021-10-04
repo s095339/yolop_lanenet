@@ -77,7 +77,7 @@ def train_model(model, optimizer, scheduler, dataloaders, dataset_sizes, device,
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     _, _, _, outputs = model(inputs)
-                    loss = compute_loss(outputs, binarys, instances, loss_type = 'CrossEntropyLoss')
+                    loss = compute_loss(outputs, binarys, instances, loss_type = 'FocalLoss')
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
